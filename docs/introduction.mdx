@@ -1,0 +1,28 @@
+---
+title: Introduction
+sidebar_label: Introduction
+sidebar_position: 1
+slug: /introduction
+---
+
+import Figure from '@site/src/components/Figure';
+import IdealVm from '@site/static/img/diagrams/ideal-vm.svg';
+
+# Introduction
+
+Verifiable computation is the notion that two parties can jointly execute a program with assurances about the result[^1]. Depending on the design goals of a specific system, verifiable computation may provide properties such as succinctness (verification is cheaper than re-execution), or privacy (certain inputs remain hidden from the other party).
+
+A useful way to think about verifiable computation is to imagine a trusted third party that performs computation perfectly on behalf of two participants who don't trust each other. For a virtual machine -- and specifically the WebAssembly virtual machine -- this means a trusted party that receives inputs from both participants, faithfully executes a program, and relays the correct output back.
+
+<Figure src={IdealVm} caption="Idealized VM" />
+
+Of course, in practice we do not want to rely on a trusted third party. Instead, cryptographic protocols can be applied which allow the two parties to **simulate** such a system while providing very strong assurances that neither party can act dishonestly or cheat. This abstraction separates **what** the computation does from **how** it is securely implemented.
+
+Different settings, such as zero-knowledge proofs or multi-party computation, utilize different cryptographic protocols and have varying capabilities and performance characteristics. This project aims to provide a unified abstraction which provides a number of benefits:
+
+- **Embedder independence** - Developers can write applications which leverage verifiable computation without coupling business logic to a specific embedder.
+- **Standard toolchains** - Programs are written in standard languages (C/C++, Rust, etc.) and compiled and tested using standard tools.
+- **Standard computation model** - Built on top of an existing, formally specified computation model rather than defining a new one.
+- **Standard host interfaces** - Common operations, such as hash functions, are exposed through standard host interfaces, enabling embedder-specific acceleration.
+
+[^1]: The notion of verifiable computation extends to more than two parties, but this project focuses specifically on the two-party setting.

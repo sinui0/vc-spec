@@ -1,0 +1,80 @@
+.figure {
+    text-align: center;
+    margin: 2rem auto;
+    max-width: 100%;
+}
+
+.imageWrapper {
+    display: inline-block;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    max-width: 100%;
+}
+
+.imageWrapper img,
+.imageWrapper svg {
+    display: block;
+    background-color: white;
+    border-radius: 4px;
+    margin: 0;
+    max-width: 100%;
+    width: 100%;
+    height: auto !important;
+}
+
+.imageWrapper:hover {
+    transform: scale(1.02);
+}
+
+.caption {
+    color: var(--ifm-color-emphasis-700);
+    font-size: 1rem;
+    margin-top: 0.5rem;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    cursor: pointer;
+}
+
+.modal {
+    cursor: default;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 1000px;
+    max-width: 90vw;
+    gap: 0;
+}
+
+.modal img,
+.modal svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background-color: white;
+    border-radius: 4px 4px 0 0;
+    margin: 0;
+}
+
+.modalCaption {
+    color: #333;
+    font-size: 1.1rem;
+    padding: 0.5rem 1rem;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+    background-color: #f9f9f9;
+    border: 1px solid lightgrey;
+    border-radius: 0 0 4px 4px;
+    margin: 0;
+}
