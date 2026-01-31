@@ -18,6 +18,7 @@ This specification covers:
 
 - A two-party computation model
 - Value visibility at the input and output boundaries
+- Visibility propagation through linear memory
 - The invocation interface: how functions are called with visibility-tagged arguments, and how results are returned
 - The requirements for a conforming *guest* module
 
@@ -69,6 +70,10 @@ A verifiable computation involves exactly two parties: the *local party* and the
 
 Each value at the invocation boundary has a *visibility* that determines which parties can observe it. There are three visibilities: *public*, *private*, and *blind*. A public value is known to both parties. A private value is known only to the local party. A blind value is known only to the remote party. Visibility determines which values each party can observe, not which operations they participate in. This distinction is symmetric: what is private to one party is blind to the other.
 
+**Symbolic**
+
+A *symbolic* value is a value that is not *public*. During execution, the embedder does not distinguish between *private* and *blind* — both are represented as symbolic values that can be operated on but not directly observed by the party that lacks visibility. The private/blind distinction exists only at the invocation boundary, where it indicates which party provided the value.
+
 ## Two-Party Model
 
 Both parties MUST use the same *guest* module — module identity is determined by the module's binary representation. Visibility semantics are applied by the *embedder*, not embedded in the guest.
@@ -89,13 +94,33 @@ At the invocation boundary, each input value has one of three visibilities:
 - **Private** — known only to the *local party*. The embedder MUST NOT reveal the value to the remote party.
 - **Blind** — known only to the *remote party*. The embedder MUST NOT reveal the value to the local party.
 
-As described in [Concepts](#concepts), both parties jointly execute every operation. Visibility determines only which values each party can observe, not which operations they participate in.
+During execution, *private* and *blind* values are both *symbolic*. The embedder tracks whether a value is *public* or *symbolic* but does not distinguish between private and blind. Both parties jointly execute every operation, regardless of the visibility of the operands.
 
 | Value Provider | Local Party's View | Remote Party's View |
 |----------------|---------------------|----------------------|
 | Local Party | private | blind |
 | Remote Party | blind | private |
 | Both (agreed) | public | public |
+
+## Memory
+
+Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *public* or *symbolic*. This determines whether the byte is readable (see [Memory Outputs](#memory-outputs)).
+
+### Initial Memory
+
+All bytes in linear memory are initially *public*. This includes bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments) during instantiation — both parties have the module and can derive the same initial memory state.
+
+### Store Propagation
+
+When a value is stored to linear memory (via [`i32.store`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), [`i64.store`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), or any other store instruction), the written bytes inherit the visibility of the value being stored. If the value is *public*, the bytes become *public*. If the value is *symbolic*, the bytes become *symbolic*.
+
+### Load Inheritance
+
+When bytes are loaded from linear memory (via [`i32.load`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), [`i64.load`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), or any other load instruction), the resulting value inherits the visibility of the bytes read. If all bytes in the range are *public*, the result is *public*. If any byte in the range is *symbolic*, the result is *symbolic*.
+
+### Memory Growth
+
+When linear memory is grown via [`memory.grow`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), the newly allocated pages are *public*.
 
 ## Invocation
 
@@ -145,15 +170,21 @@ Each tagged argument in the call configuration corresponds to a parameter in the
 
 ### Memory Inputs
 
-For data that does not fit in function parameters (e.g., byte buffers, variable-length structures), the embedder MAY write data into the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) before or during the call. The mechanism for allocating space within the guest's linear memory is **implementation-defined**. The visibility of written data is determined by the caller.
+The caller MAY write data into the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories). Each write specifies a destination address, the data, and a *visibility*. The address MUST be *public* — both parties agree on where data is written. The visibility of the written data is determined by the caller, following the same rules as tagged arguments: *public*, *private*, or *blind*. Written bytes update the visibility state of memory as described in [Store Propagation](#store-propagation).
+
+The mechanism for allocating space within the guest's linear memory is **implementation-defined**.
 
 ### Return Values
 
-The return values of a function MUST be *public*. Both parties observe the same return values.
+The return values of a function are *public*. Both parties observe the same return values, regardless of the visibility those values had during execution.
 
 ### Memory Outputs
 
-Linear memory contents after execution are not automatically public. The mechanism for reading data from the guest's linear memory after a function call is **implementation-defined**.
+Only *public* bytes in the guest's linear memory are readable. *Symbolic* bytes are not readable by either party.
+
+Both parties MAY agree to make a memory region *public*. This requires agreement from both parties — the mechanism for reaching this agreement is outside the scope of this specification. Once a region is *public*, either party MAY read from it, and both parties observe the same bytes.
+
+Executing a function may modify the contents and visibility of memory. If a function stores a *symbolic* value to an address that was previously *public*, that address becomes *symbolic* and is no longer readable.
 
 ### Traps
 
@@ -226,7 +257,7 @@ Implementation-defined behaviors MUST NOT alter WebAssembly execution semantics.
 
 ### Control Flow on Private/Blind Values
 
-Whether control flow can depend on *private* or *blind* inputs.
+Whether control flow can depend on *symbolic* inputs.
 
 > **Note**
 >
@@ -237,11 +268,11 @@ Whether control flow can depend on *private* or *blind* inputs.
 >   (else ...))
 > ```
 >
-> Some embedders require all branch conditions to be public. Others support branching on private or blind values.
+> Some embedders require all branch conditions to be public. Others support branching on symbolic values.
 
 ### Memory Access Patterns
 
-Whether memory addresses can depend on *private* or *blind* inputs.
+Whether memory addresses can depend on *symbolic* inputs.
 
 > **Note**
 >
@@ -250,19 +281,15 @@ Whether memory addresses can depend on *private* or *blind* inputs.
 > (i32.load (local.get $private_address))
 > ```
 >
-> Some embedders require public addresses. Others support address patterns that depend on private or blind values.
+> Some embedders require public addresses. Others support address patterns that depend on symbolic values.
 
 ### Memory Input Allocation
 
 The mechanism by which the embedder allocates space within the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) for memory inputs (see [Memory Inputs](#memory-inputs)).
 
-### Memory Outputs
-
-The mechanism for reading data from the guest's linear memory after a function call (see [Memory Outputs](#memory-outputs-1)). Linear memory contents after execution are not automatically public.
-
 ### Protocol-Level Failures
 
-How protocol-level failures are reported. A protocol-level failure is distinct from both normal completion and a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) (see [Traps](#traps)). Sources of protocol-level failures include unsupported operations (e.g., branching on a *private* value when the embedder does not support it), communication errors, and aborted sessions.
+How protocol-level failures are reported. A protocol-level failure is distinct from both normal completion and a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) (see [Traps](#traps)). Sources of protocol-level failures include unsupported operations (e.g., branching on a *symbolic* value when the embedder does not support it), communication errors, and aborted sessions.
 
 ### Available Host Functions
 
