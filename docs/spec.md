@@ -309,14 +309,6 @@ Failure of an interface operation is indicated by one of:
 - **trap** — the guest execution [trapped](https://webassembly.github.io/spec/core/intro/overview.html#trap).
 - **abort** — the joint execution could not complete, for reasons outside the caller's control and outside the WebAssembly semantics (see [Aborts](#aborts)).
 
-### Visibility
-
-A *visibility* classifies a value at the embedding boundary:
-
-- **public** — known to both parties.
-- **private** — known only to the local party.
-- **blind** — known only to the remote party.
-
 ### Tagged Argument
 
 A *tagged argument* pairs a visibility with either a value or a type:
@@ -343,7 +335,7 @@ A *tagged argument* pairs a visibility with either a value or a type:
 
 1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
 2. If *i* is out of bounds, return *error*.
-3. Write *byte* at index *i*. The byte's visibility is set to *visibility*.
+3. Write *byte* at index *i*. Update the visibility map: *public* maps to *concrete*, *private* and *blind* map to *symbolic*.
 4. Return the updated store.
 
 #### `mem_read`(*store*, *memaddr*, *i*: u32) : (*byte* | *abort* | *error*)
