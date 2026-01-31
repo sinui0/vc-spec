@@ -18,15 +18,15 @@ This specification covers:
 
 - A two-party computation model
 - Value visibility at the input and output boundaries
-- Visibility propagation through linear memory
-- The invocation interface: how functions are called with visibility-tagged arguments, and how results are returned
+- Visibility propagation through linear memory and globals
+- The embedding interface: how functions are invoked with visibility-tagged arguments, how memory is read and written, and how results are returned
 - The requirements for a conforming *guest* module
 
 This specification does not cover:
 
 - N-party protocols (n > 2)
 - Specific implementation strategies — this specification defines the *embedder* interface, not how it is realized
-- Standard host function interfaces — defined separately in [VCI](vci.md)
+- Standard host function interfaces — these are defined at a separate layer
 
 ### Relationship to WebAssembly
 
@@ -52,11 +52,11 @@ The verifiable compute model is structured around the following concepts.
 
 **Guest**
 
-A *guest* is the WebAssembly module being executed. A conforming guest is a standard WebAssembly module — no special annotations or modifications are required. The guest does not observe the visibility of its inputs.
+A *guest* is the WebAssembly module being executed. A conforming guest is a standard WebAssembly module. No special annotations or modifications are required.
 
 **Embedder**
 
-An *embedder* is the [host environment](https://webassembly.github.io/spec/core/intro/overview.html#embedder) that loads, validates, and instantiates the guest with verifiable compute semantics. Each party runs an embedder instance, and the two instances cooperate to jointly execute the guest. The embedder is responsible for enforcing visibility rules. How the embedder realizes these semantics internally is outside the scope of this specification.
+An *embedder* is the [host environment](https://webassembly.github.io/spec/core/intro/overview.html#embedder) that loads, validates, and instantiates the guest with verifiable compute semantics. Each party runs an embedder instance, and the two instances cooperate to jointly execute the guest.
 
 **Conforming Embedder**
 
@@ -64,21 +64,27 @@ A *conforming embedder* is an embedder that implements the semantics defined by 
 
 **Parties**
 
-A verifiable computation involves exactly two parties: the *local party* and the *remote party*. Each party runs an instance of the embedder. The two instances jointly execute the guest — both parties participate in every operation and MUST agree on every state update. The parties are distinguished only by which inputs they provide and their perspective on visibility.
+A verifiable computation involves exactly two parties: the *local party* and the *remote party*. Each party runs an instance of the embedder. The two instances jointly execute the guest. The parties are distinguished by which inputs they provide and their perspective on visibility.
 
 **Visibility**
 
-Each value at the invocation boundary has a *visibility* that determines which parties can observe it. There are three visibilities: *public*, *private*, and *blind*. A public value is known to both parties. A private value is known only to the local party. A blind value is known only to the remote party. Visibility determines which values each party can observe, not which operations they participate in. This distinction is symmetric: what is private to one party is blind to the other.
+Each value has a *visibility* that determines which parties can observe it. There are three visibilities: *public*, *private*, and *blind*. A public value is known to both parties. A private value is known only to the local party. A blind value is known only to the remote party. This distinction is symmetric: what is private to one party is blind to the other.
 
 **Symbolic**
 
-A *symbolic* value is a value that is not *public*. During execution, the embedder does not distinguish between *private* and *blind* — both are represented as symbolic values that can be operated on but not directly observed by the party that lacks visibility. The private/blind distinction exists only at the invocation boundary, where it indicates which party provided the value.
+A *symbolic* value is a value that is not *public*. During execution, the embedder does not distinguish between *private* and *blind*. The private/blind distinction exists only at the invocation boundary, where it indicates which party provided the value.
+
+**Store**
+
+The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a *visibility map*: a mapping from each value-carrying location to a visibility (*public* or *symbolic*). The locations subject to visibility tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. The visibility map is not observable by the guest.
 
 ## Two-Party Model
 
-Both parties MUST use the same *guest* module — module identity is determined by the module's binary representation. Visibility semantics are applied by the *embedder*, not embedded in the guest.
+Both parties MUST use the same *guest* module. Module identity is determined by the module's binary representation.
 
-Both parties MUST agree on the *call configuration* (see [Invocation](#invocation)) — the function to invoke, the number and types of arguments, and which party provides each argument. The mechanism for reaching this agreement is outside the scope of this specification.
+Both parties MUST agree on every state update during execution. Visibility determines which values each party can observe, not which operations they participate in.
+
+Both parties MUST agree on the *call configuration* (see [Invocation](#invocation)). The mechanism for reaching this agreement is outside the scope of this specification.
 
 > **Note**
 >
@@ -94,7 +100,7 @@ At the invocation boundary, each input value has one of three visibilities:
 - **Private** — known only to the *local party*. The embedder MUST NOT reveal the value to the remote party.
 - **Blind** — known only to the *remote party*. The embedder MUST NOT reveal the value to the local party.
 
-During execution, *private* and *blind* values are both *symbolic*. The embedder tracks whether a value is *public* or *symbolic* but does not distinguish between private and blind. Both parties jointly execute every operation, regardless of the visibility of the operands.
+During execution, *private* and *blind* values are both *symbolic*.
 
 | Value Provider | Local Party's View | Remote Party's View |
 |----------------|---------------------|----------------------|
@@ -104,27 +110,45 @@ During execution, *private* and *blind* values are both *symbolic*. The embedder
 
 ## Memory
 
-Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *public* or *symbolic*. This determines whether the byte is readable (see [Memory Outputs](#memory-outputs)).
+Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *public* or *symbolic*.
 
 ### Initial Memory
 
-All bytes in linear memory are initially *public*. This includes bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments) during instantiation — both parties have the module and can derive the same initial memory state.
+All bytes in linear memory are initially *public*, including bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments).
 
 ### Store Propagation
 
-When a value is stored to linear memory (via [`i32.store`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), [`i64.store`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), or any other store instruction), the written bytes inherit the visibility of the value being stored. If the value is *public*, the bytes become *public*. If the value is *symbolic*, the bytes become *symbolic*.
+When a value is stored to linear memory, the written bytes inherit the visibility of the stored value.
 
 ### Load Inheritance
 
-When bytes are loaded from linear memory (via [`i32.load`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), [`i64.load`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), or any other load instruction), the resulting value inherits the visibility of the bytes read. If all bytes in the range are *public*, the result is *public*. If any byte in the range is *symbolic*, the result is *symbolic*.
+When bytes are loaded from linear memory, the resulting value inherits the visibility of the bytes read. If any byte in the range is *symbolic*, the result is *symbolic*.
 
 ### Memory Growth
 
 When linear memory is grown via [`memory.grow`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), the newly allocated pages are *public*.
 
-## Invocation
+## Globals
 
-This section defines how a function in the *guest* module is called and how data crosses the boundary between the caller and the guest.
+Each [global variable](https://webassembly.github.io/spec/core/syntax/modules.html#globals) in the store has a visibility in the *visibility map*.
+
+### Initial Value
+
+All globals are initially *public*.
+
+### Set Propagation
+
+When a value is written to a mutable global via [`global.set`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-set), the global's visibility is set to the visibility of the written value.
+
+### Get Inheritance
+
+When a value is read from a global via [`global.get`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-get), the resulting value inherits the visibility of the global.
+
+## Tables
+
+[Table](https://webassembly.github.io/spec/core/syntax/modules.html#tables) elements are references ([`funcref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types), [`externref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types)). Table elements are not subject to visibility tracking.
+
+## Invocation
 
 ### Call Configuration
 
@@ -139,7 +163,7 @@ Each tagged argument is one of:
 - **Private** — the value is known only to the local party. The caller provides the value.
 - **Blind** — the value is provided by the remote party. The caller does not know it and supplies only the type.
 
-The call configuration fully determines the inputs to the computation. The guest module does not know or specify the visibility of its inputs — this is determined entirely by the caller.
+The guest module does not observe the visibility of its inputs.
 
 > **Note**
 >
@@ -166,29 +190,15 @@ The call configuration fully determines the inputs to the computation. The guest
 
 ### Parameters
 
-Each tagged argument in the call configuration corresponds to a parameter in the function's WebAssembly [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types). The value is passed to the function as a normal parameter. The visibility tag is consumed by the *embedder* and is not observable by the guest.
-
-### Memory Inputs
-
-The caller MAY write data into the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories). Each write specifies a destination address, the data, and a *visibility*. The address MUST be *public* — both parties agree on where data is written. The visibility of the written data is determined by the caller, following the same rules as tagged arguments: *public*, *private*, or *blind*. Written bytes update the visibility state of memory as described in [Store Propagation](#store-propagation).
-
-The mechanism for allocating space within the guest's linear memory is **implementation-defined**.
+Each tagged argument corresponds to a parameter in the function's WebAssembly [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types). The value is passed as a normal parameter. The visibility tag is consumed by the *embedder* and is not observable by the guest.
 
 ### Return Values
 
 The return values of a function are *public*. Both parties observe the same return values, regardless of the visibility those values had during execution.
 
-### Memory Outputs
-
-Only *public* bytes in the guest's linear memory are readable. *Symbolic* bytes are not readable by either party.
-
-Both parties MAY agree to make a memory region *public*. This requires agreement from both parties — the mechanism for reaching this agreement is outside the scope of this specification. Once a region is *public*, either party MAY read from it, and both parties observe the same bytes.
-
-Executing a function may modify the contents and visibility of memory. If a function stores a *symbolic* value to an address that was previously *public*, that address becomes *symbolic* and is no longer readable.
-
 ### Traps
 
-A WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) is a valid execution outcome. Traps MUST be *public* — both parties observe that a trap occurred. A trap MUST be distinguishable from normal completion.
+A WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) is a valid execution outcome. Traps are *public*. A trap is distinguishable from normal completion.
 
 Sources of traps include those defined by WebAssembly:
 - [`unreachable`](https://webassembly.github.io/spec/core/syntax/instructions.html#syntax-instr-control) instruction
@@ -197,7 +207,7 @@ Sources of traps include those defined by WebAssembly:
 - Out-of-bounds [table access](https://webassembly.github.io/spec/core/exec/instructions.html#table-instructions)
 - [Stack overflow](https://webassembly.github.io/spec/core/appendix/implementation.html#stack-overflow)
 
-Protocol-level failures are distinct from traps and are **implementation-defined** (see [Protocol-Level Failures](#protocol-level-failures)).
+An *abort* is distinct from a trap and is **implementation-defined** (see [Aborts](#aborts)).
 
 ## Guest Module
 
@@ -217,7 +227,7 @@ Complex data structures MUST be passed via [linear memory](https://webassembly.g
 
 The guest module MAY [import](https://webassembly.github.io/spec/core/syntax/modules.html#imports) [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions). The set of host functions available to a module is **implementation-defined**.
 
-Standard host function interfaces are defined separately in [VCI](vci.md). Embedders MAY provide additional host functions for accelerated operations (e.g., hash functions, signature verification).
+Embedders MAY provide additional host functions for accelerated operations (e.g., hash functions, signature verification).
 
 ### Custom Sections
 
@@ -239,23 +249,91 @@ Embedders that support WebAssembly proposals beyond the core specification MUST 
 
 ### Floating-Point
 
-Floating-point support is optional. Embedders that support floating-point MUST produce deterministic results by canonicalizing all NaN outputs to the [canonical NaN](https://webassembly.github.io/spec/core/syntax/values.html#floating-point) defined by the WebAssembly specification. This eliminates the only source of [nondeterminism](https://webassembly.github.io/spec/core/intro/overview.html#nondeterminism) in the WebAssembly core instruction set. Additional proposals MAY introduce further sources of nondeterminism; embedders MUST resolve these deterministically.
+Floating-point support is optional. Embedders that support floating-point MUST produce deterministic results by canonicalizing all NaN outputs to the [canonical NaN](https://webassembly.github.io/spec/core/syntax/values.html#floating-point) defined by the WebAssembly specification. This eliminates the only source of [nondeterminism](https://webassembly.github.io/spec/core/intro/overview.html#nondeterminism) in the WebAssembly core instruction set.
 
 ### Resource Limits
 
-Embedders MAY impose limits on resources such as stack depth and linear memory size. These limits are a source of cross-embedder divergence: the same program may complete on one embedder and trap on another due to differing limits.
+Embedders MAY impose limits on resources such as stack depth and linear memory size. These limits are a source of cross-embedder divergence.
 
 Embedders SHOULD declare their resource limits. For cross-embedder compatibility, embedders SHOULD use consistent resource limits.
 
+## Embedding
+
+A verifiable compute embedder interacts with the WebAssembly semantics through the operations defined in this section. These operations replace their [WebAssembly embedding](https://webassembly.github.io/spec/core/appendix/embedding.html) counterparts where this specification defines different semantics. For all other operations — including [`module_decode`](https://webassembly.github.io/spec/core/appendix/embedding.html#embed-module-decode), [`module_validate`](https://webassembly.github.io/spec/core/appendix/embedding.html#embed-module-validate), [`module_instantiate`](https://webassembly.github.io/spec/core/appendix/embedding.html#embed-module-instantiate), and [`module_exports`](https://webassembly.github.io/spec/core/appendix/embedding.html#embed-module-exports) — the corresponding WebAssembly embedding operations apply without modification.
+
+### Errors and Outcomes
+
+Failure of an interface operation is indicated by one of:
+
+- **error** — the operation failed (e.g., out-of-bounds access, invalid arguments).
+- **trap** — the guest execution [trapped](https://webassembly.github.io/spec/core/intro/overview.html#trap).
+- **abort** — the joint execution could not complete, for reasons outside the caller's control and outside the WebAssembly semantics (see [Aborts](#aborts)).
+
+### Visibility
+
+A *visibility* classifies a value at the embedding boundary:
+
+- **public** — known to both parties.
+- **private** — known only to the local party.
+- **blind** — known only to the remote party.
+
+### Tagged Argument
+
+A *tagged argument* pairs a visibility with either a value or a type:
+
+- public(*val*) — a public value.
+- private(*val*) — a private value provided by the local party.
+- blind(*valtype*) — a value of the given type, provided by the remote party.
+
+### Invocation
+
+#### `invoke`(*store*, *funcaddr*, *tagged_arg*\*) : (*store*, *val*\* | *trap* | *abort* | *error*)
+
+1. Pre-condition: the [function address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-funcaddr) *funcaddr* is valid in *store*.
+2. Pre-condition: the number and types of *tagged_arg*\* match the function's [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types).
+3. Execute the function with the given tagged arguments. Each argument's visibility is consumed by the embedder. The guest receives the values as normal parameters.
+4. If execution completes normally, let *result* be the return values. Return values are *public*.
+5. If execution traps, let *result* be *trap*.
+6. If the joint execution cannot complete, let *result* be *abort*.
+7. Return the new store paired with *result*.
+
+### Memory
+
+#### `mem_write`(*store*, *memaddr*, *i*: u32, *byte*, *visibility*) : (*store* | *abort* | *error*)
+
+1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
+2. If *i* is out of bounds, return *error*.
+3. Write *byte* at index *i*. The byte's visibility is set to *visibility*.
+4. Return the updated store.
+
+#### `mem_read`(*store*, *memaddr*, *i*: u32) : (*byte* | *abort* | *error*)
+
+1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
+2. If *i* is out of bounds, return *error*.
+3. If the byte at index *i* is *symbolic*, return *error*.
+4. Return the byte at index *i*.
+
+#### `mem_reveal`(*store*, *memaddr*, *i*: u32, *n*: u32) : (*store* | *abort* | *error*)
+
+1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
+2. Pre-condition: both parties agree to reveal the specified region.
+3. If *i* + *n* is out of bounds, return *error*.
+4. Set the visibility of bytes *i* through *i* + *n* − 1 to *public*.
+5. Return the updated store.
+
+> **Note**
+>
+> `mem_reveal` requires agreement from both parties. The mechanism for reaching this agreement is outside the scope of this specification. After a successful `mem_reveal`, the revealed bytes can be read via `mem_read`.
+
 ## Implementation-Defined Behaviors
 
-Implementation-defined behaviors MUST NOT alter WebAssembly execution semantics. When an embedder encounters an operation it does not support (e.g., a branch condition that depends on a *private* value), it MUST NOT produce a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap). Instead, the embedder MUST report a *protocol-level failure*, which is distinguishable from both normal completion and a trap (see [Protocol-Level Failures](#protocol-level-failures)).
+Implementation-defined behaviors MUST NOT alter WebAssembly execution semantics. When an embedder encounters an operation it does not support, it MUST NOT produce a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap). Instead, the embedder MUST report an *abort*, which is distinguishable from both normal completion and a trap (see [Aborts](#aborts)).
 
 > **Note**
 >
 > The following is a non-exhaustive list of areas where embedders commonly differ. It is advisory, not normative. Embedders SHOULD document their choices in these and any other areas where their behavior is implementation-defined.
 
-### Control Flow on Private/Blind Values
+### Control Flow on Symbolic Values
 
 Whether control flow can depend on *symbolic* inputs.
 
@@ -285,15 +363,15 @@ Whether memory addresses can depend on *symbolic* inputs.
 
 ### Memory Input Allocation
 
-The mechanism by which the embedder allocates space within the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) for memory inputs (see [Memory Inputs](#memory-inputs)).
+The mechanism by which the embedder allocates space within the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) for memory writes (see [Embedding — Memory](#memory-1)).
 
-### Protocol-Level Failures
+### Aborts
 
-How protocol-level failures are reported. A protocol-level failure is distinct from both normal completion and a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) (see [Traps](#traps)). Sources of protocol-level failures include unsupported operations (e.g., branching on a *symbolic* value when the embedder does not support it), communication errors, and aborted sessions.
+How *aborts* are reported. An abort is distinct from both normal completion and a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) (see [Traps](#traps)). Sources include unsupported operations and failures in the cooperation between parties.
 
 ### Available Host Functions
 
-The set of [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) available to the guest module (see [Imports](#imports)). Standard host function interfaces are defined separately in [VCI](vci.md).
+The set of [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) available to the guest module (see [Imports](#imports)).
 
 ### Resource Limits {#impl-resource-limits}
 
