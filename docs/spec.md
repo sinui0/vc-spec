@@ -18,7 +18,7 @@ This specification covers:
 
 - A two-party computation model
 - Value visibility at the input and output boundaries
-- Visibility propagation through linear memory and globals
+- Visibility propagation through instructions, linear memory, and globals
 - The embedding interface: how functions are invoked with visibility-tagged arguments, how memory is read and written, and how results are returned
 - The requirements for a conforming *guest* module
 
@@ -70,13 +70,17 @@ A verifiable computation involves exactly two parties: the *local party* and the
 
 Each value has a *visibility* that determines which parties can observe it. There are three visibilities: *public*, *private*, and *blind*. A public value is known to both parties. A private value is known only to the local party. A blind value is known only to the remote party. This distinction is symmetric: what is private to one party is blind to the other.
 
+**Concrete**
+
+A *concrete* value is a value for which the VM has a definite bit pattern. *Public* values at the invocation boundary enter execution as *concrete* values.
+
 **Symbolic**
 
-A *symbolic* value is a value that is not *public*. During execution, the embedder does not distinguish between *private* and *blind*. The private/blind distinction exists only at the invocation boundary, where it indicates which party provided the value.
+A *symbolic* value is a value that is not *concrete*. The VM operates on symbolic values without access to their bit patterns. *Private* and *blind* values at the invocation boundary both enter execution as *symbolic* values — the VM does not distinguish between them.
 
 **Store**
 
-The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a *visibility map*: a mapping from each value-carrying location to a visibility (*public* or *symbolic*). The locations subject to visibility tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. The visibility map is not observable by the guest.
+The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a *visibility map*: a mapping from each value-carrying location to a visibility (*concrete* or *symbolic*). The locations subject to visibility tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. The visibility map is not observable by the guest.
 
 ## Two-Party Model
 
@@ -100,21 +104,45 @@ At the invocation boundary, each input value has one of three visibilities:
 - **Private** — known only to the *local party*. The embedder MUST NOT reveal the value to the remote party.
 - **Blind** — known only to the *remote party*. The embedder MUST NOT reveal the value to the local party.
 
-During execution, *private* and *blind* values are both *symbolic*.
+During execution, *public* values are *concrete* and *private* and *blind* values are both *symbolic*.
 
-| Value Provider | Local Party's View | Remote Party's View |
-|----------------|---------------------|----------------------|
-| Local Party | private | blind |
-| Remote Party | blind | private |
-| Both (agreed) | public | public |
+> **Note**
+>
+> Concrete and symbolic describe the VM's view, not any individual party's view. An implementation may internally have access to the bit patterns of symbolic values — for example, a zero-knowledge prover knows its own witness concretely — but the VM does not. In zero-knowledge terminology, *public* inputs correspond to the *instance* and *private* inputs correspond to the *witness*.
+
+## Instructions
+
+This section defines how visibility propagates through WebAssembly instructions during execution.
+
+### Default Rule
+
+An instruction produces a *concrete* result if all of its operands are *concrete*. Otherwise, the result is *symbolic*.
+
+### Annihilator Exceptions
+
+A binary instruction produces a *concrete* result when a *concrete* operand completely determines the result, regardless of the other operand's value. These exceptions take precedence over the default rule.
+
+| Instruction | Condition |
+|---|---|
+| [`imul`](https://webassembly.github.io/spec/core/exec/numerics.html#op-imul) | either operand is a concrete `0` |
+| [`iand`](https://webassembly.github.io/spec/core/exec/numerics.html#op-iand) | either operand is a concrete `0` |
+| [`ior`](https://webassembly.github.io/spec/core/exec/numerics.html#op-ior) | either operand is a concrete value with all bits set |
+
+> **Note**
+>
+> This table is exhaustive. No other WebAssembly instruction has a concrete operand that completely determines the result. Shifts and rotates do not qualify because the shift amount is taken modulo the bit width. Division does not qualify because the result depends on whether the divisor is zero. The [`select`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-select) instruction does not qualify because the result is the selected operand, whose visibility may be symbolic.
+
+### Constants
+
+[Constant instructions](https://webassembly.github.io/spec/core/exec/instructions.html#exec-const) produce *concrete* values.
 
 ## Memory
 
-Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *public* or *symbolic*.
+Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *concrete* or *symbolic*.
 
 ### Initial Memory
 
-All bytes in linear memory are initially *public*, including bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments).
+All bytes in linear memory are initially *concrete*, including bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments).
 
 ### Store Propagation
 
@@ -126,7 +154,7 @@ When bytes are loaded from linear memory, the resulting value inherits the visib
 
 ### Memory Growth
 
-When linear memory is grown via [`memory.grow`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), the newly allocated pages are *public*.
+When linear memory is grown via [`memory.grow`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), the newly allocated pages are *concrete*.
 
 ## Globals
 
@@ -134,7 +162,7 @@ Each [global variable](https://webassembly.github.io/spec/core/syntax/modules.ht
 
 ### Initial Value
 
-All globals are initially *public*.
+All globals are initially *concrete*.
 
 ### Set Propagation
 
@@ -152,7 +180,7 @@ When a value is read from a global via [`global.get`](https://webassembly.github
 
 ### Call Configuration
 
-A function invocation consists of:
+A *call configuration* is specified from the local party's perspective. It consists of:
 
 1. The name of an [exported function](https://webassembly.github.io/spec/core/syntax/modules.html#exports)
 2. A list of *tagged arguments*, one per parameter in the function's type signature
@@ -162,6 +190,8 @@ Each tagged argument is one of:
 - **Public** — the value is known to both parties. The caller provides the value.
 - **Private** — the value is known only to the local party. The caller provides the value.
 - **Blind** — the value is provided by the remote party. The caller does not know it and supplies only the type.
+
+A *blind* argument is the local party's declaration that a parameter slot is filled by the remote party. The same value is *private* from the remote party's perspective. Both parties MUST agree on which parameters are public and which are provided by each party; they differ only in which arguments they tag as private vs. blind.
 
 The guest module does not observe the visibility of its inputs.
 
@@ -177,6 +207,7 @@ The guest module does not observe the visibility of its inputs.
 >     Blind(ValType),
 > }
 >
+> // Local party's call configuration
 > CallConfiguration {
 >     function: "multiply",
 >     args: [
@@ -184,9 +215,18 @@ The guest module does not observe the visibility of its inputs.
 >         Arg::Blind(ValType::I32),
 >     ],
 > }
+>
+> // Remote party's call configuration for the same invocation
+> CallConfiguration {
+>     function: "multiply",
+>     args: [
+>         Arg::Blind(ValType::I32),
+>         Arg::Private(Value::I32(5)),
+>     ],
+> }
 > ```
 >
-> Here, the local party provides `7` as a private input. The second parameter is blind — the local party knows only that it is an `i32`, with the actual value provided by the remote party. The guest function receives both as ordinary `i32` parameters.
+> The local party provides `7` as a private input and declares the second parameter as blind. The remote party provides `5` as a private input and declares the first parameter as blind. The guest function receives both as ordinary `i32` parameters.
 
 ### Parameters
 
@@ -194,11 +234,11 @@ Each tagged argument corresponds to a parameter in the function's WebAssembly [t
 
 ### Return Values
 
-The return values of a function are *public*. Both parties observe the same return values, regardless of the visibility those values had during execution.
+The return values of a function are *concrete*. Both parties observe the same return values, regardless of the visibility those values had during execution.
 
 ### Traps
 
-A WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) is a valid execution outcome. Traps are *public*. A trap is distinguishable from normal completion.
+A WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) is a valid execution outcome. Both parties observe the same trap outcome. A trap is distinguishable from normal completion.
 
 Sources of traps include those defined by WebAssembly:
 - [`unreachable`](https://webassembly.github.io/spec/core/syntax/instructions.html#syntax-instr-control) instruction
@@ -292,7 +332,7 @@ A *tagged argument* pairs a visibility with either a value or a type:
 1. Pre-condition: the [function address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-funcaddr) *funcaddr* is valid in *store*.
 2. Pre-condition: the number and types of *tagged_arg*\* match the function's [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types).
 3. Execute the function with the given tagged arguments. Each argument's visibility is consumed by the embedder. The guest receives the values as normal parameters.
-4. If execution completes normally, let *result* be the return values. Return values are *public*.
+4. If execution completes normally, let *result* be the return values. Return values are *concrete*.
 5. If execution traps, let *result* be *trap*.
 6. If the joint execution cannot complete, let *result* be *abort*.
 7. Return the new store paired with *result*.
@@ -318,7 +358,7 @@ A *tagged argument* pairs a visibility with either a value or a type:
 1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
 2. Pre-condition: both parties agree to reveal the specified region.
 3. If *i* + *n* is out of bounds, return *error*.
-4. Set the visibility of bytes *i* through *i* + *n* − 1 to *public*.
+4. Set the visibility of bytes *i* through *i* + *n* − 1 to *concrete*.
 5. Return the updated store.
 
 > **Note**
@@ -346,7 +386,7 @@ Whether control flow can depend on *symbolic* inputs.
 >   (else ...))
 > ```
 >
-> Some embedders require all branch conditions to be public. Others support branching on symbolic values.
+> Some embedders require all branch conditions to be concrete. Others support branching on symbolic values.
 
 ### Memory Access Patterns
 
@@ -359,7 +399,7 @@ Whether memory addresses can depend on *symbolic* inputs.
 > (i32.load (local.get $private_address))
 > ```
 >
-> Some embedders require public addresses. Others support address patterns that depend on symbolic values.
+> Some embedders require concrete addresses. Others support address patterns that depend on symbolic values.
 
 ### Memory Input Allocation
 

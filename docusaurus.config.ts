@@ -1,6 +1,8 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 const config: Config = {
   title: "Verifiable Compute",
@@ -43,6 +45,8 @@ const config: Config = {
         docs: {
           sidebarPath: "./sidebars.ts",
           editUrl: "https://github.com/sinui0/vc-spec/tree/main/",
+          remarkPlugins: [remarkMath],
+          rehypePlugins: [rehypeKatex],
         },
         blog: false,
         theme: {
@@ -50,6 +54,16 @@ const config: Config = {
         },
       } satisfies Preset.Options,
     ],
+  ],
+
+  stylesheets: [
+    {
+      href: "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css",
+      type: "text/css",
+      integrity:
+        "sha384-nB0miv6/jRmo5UKSRK3Rlm+J1Nabc7OK8SGkAc8U8pY6EBMFMb6b43T0Mf/Da1O",
+      crossorigin: "anonymous",
+    },
   ],
 
   themeConfig: {
