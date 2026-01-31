@@ -70,6 +70,10 @@ A verifiable computation involves exactly two parties: the *local party* and the
 
 Each value has a *visibility* that determines which parties can observe it. There are three visibilities: *public*, *private*, and *blind*. A public value is known to both parties. A private value is known only to the local party. A blind value is known only to the remote party. This distinction is symmetric: what is private to one party is blind to the other.
 
+**Taint**
+
+Every value in the VM has a *taint*: either *concrete* or *symbolic*. Taint determines whether the VM has access to the value's bit pattern. Taint propagates through instructions, memory operations, and globals.
+
 **Concrete**
 
 A *concrete* value is a value for which the VM has a definite bit pattern. *Public* values at the invocation boundary enter execution as *concrete* values.
@@ -80,7 +84,7 @@ A *symbolic* value is a value that is not *concrete*. The VM operates on symboli
 
 **Store**
 
-The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a mapping from each value-carrying location to a taint (*concrete* or *symbolic*). The locations subject to taint tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. This mapping is not observable by the guest.
+The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a mapping from each value-carrying location to a taint (*concrete* or *symbolic*). The locations subject to taint tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes, [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values, and [local](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-local) variables. This mapping is not observable by the guest.
 
 ## Two-Party Model
 
@@ -144,37 +148,61 @@ The [`select`](https://webassembly.github.io/spec/core/exec/instructions.html#ex
 
 Each byte in the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) is either *concrete* or *symbolic*.
 
-### Initial Memory
+### Initialization
 
 All bytes in linear memory are initially *concrete*, including bytes initialized by [data segments](https://webassembly.github.io/spec/core/syntax/modules.html#data-segments).
 
-### Store Propagation
+### Writes
 
 When a value is stored to linear memory, the written bytes inherit the taint of the stored value.
 
-### Load Inheritance
+### Loads
 
 When bytes are loaded from linear memory, the resulting value inherits the taint of the bytes read. If any byte in the range is *symbolic*, the result is *symbolic*.
 
-### Memory Growth
+### Growth
 
 When linear memory is grown via [`memory.grow`](https://webassembly.github.io/spec/core/exec/instructions.html#memory-instructions), the newly allocated pages are *concrete*.
+
+### Copy
+
+When bytes are copied via [`memory.copy`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-memory-copy), each destination byte inherits the taint of the corresponding source byte.
+
+### Fill
+
+When bytes are written via [`memory.fill`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-memory-fill), each destination byte inherits the taint of the fill value.
 
 ## Globals
 
 Each [global variable](https://webassembly.github.io/spec/core/syntax/modules.html#globals) in the store has a taint (*concrete* or *symbolic*).
 
-### Initial Value
+### Initialization
 
 All globals are initially *concrete*.
 
-### Set Propagation
+### Sets
 
 When a value is written to a mutable global via [`global.set`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-set), the global's taint is set to the taint of the written value.
 
-### Get Inheritance
+### Gets
 
 When a value is read from a global via [`global.get`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-get), the resulting value inherits the taint of the global.
+
+## Locals
+
+Each [local variable](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-local) in a function activation has a taint.
+
+### Initialization
+
+Parameters receive their taint from the corresponding tagged argument at the invocation boundary: *public* arguments are *concrete*, *private* and *blind* arguments are *symbolic*. Locally declared variables are initialized to their [default value](https://webassembly.github.io/spec/core/exec/instructions.html#exec-local-get) and are *concrete*.
+
+### Sets
+
+When a value is written to a local via [`local.set`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-local-set) or [`local.tee`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-local-tee), the local's taint is set to the taint of the written value.
+
+### Gets
+
+When a value is read from a local via [`local.get`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-local-get), the resulting value inherits the taint of the local.
 
 ## Tables
 
@@ -187,7 +215,7 @@ When a value is read from a global via [`global.get`](https://webassembly.github
 A *call configuration* is specified from the local party's perspective. It consists of:
 
 1. The name of an [exported function](https://webassembly.github.io/spec/core/syntax/modules.html#exports)
-2. A list of *tagged arguments*, one per parameter in the function's type signature
+2. A list of *tagged arguments*, one per parameter in the function's [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types)
 
 Each tagged argument is one of:
 
@@ -231,10 +259,6 @@ The guest module does not observe the visibility of its inputs.
 > ```
 >
 > The local party provides `7` as a private input and declares the second parameter as blind. The remote party provides `5` as a private input and declares the first parameter as blind. The guest function receives both as ordinary `i32` parameters.
-
-### Parameters
-
-Each tagged argument corresponds to a parameter in the function's WebAssembly [type signature](https://webassembly.github.io/spec/core/syntax/types.html#function-types). The value is passed as a normal parameter. The visibility tag is consumed by the *embedder* and is not observable by the guest.
 
 ### Return Values
 
@@ -384,7 +408,7 @@ Whether control flow can depend on *symbolic* inputs.
 >
 > Some embedders require all branch conditions to be concrete. Others support branching on symbolic values.
 
-### Memory Access Patterns
+### Symbolic Addressing
 
 Whether memory addresses can depend on *symbolic* inputs.
 
@@ -397,7 +421,7 @@ Whether memory addresses can depend on *symbolic* inputs.
 >
 > Some embedders require concrete addresses. Others support address patterns that depend on symbolic values.
 
-### Memory Input Allocation
+### Input Allocation
 
 The mechanism by which the embedder allocates space within the guest's [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) for memory writes (see [Embedding — Memory](#memory-1)).
 
@@ -405,7 +429,7 @@ The mechanism by which the embedder allocates space within the guest's [linear m
 
 How *aborts* are reported. An abort is distinct from both normal completion and a WebAssembly [trap](https://webassembly.github.io/spec/core/intro/overview.html#trap) (see [Traps](#traps)). Sources include unsupported operations and failures in the cooperation between parties.
 
-### Available Host Functions
+### Host Functions
 
 The set of [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) available to the guest module (see [Imports](#imports)).
 
