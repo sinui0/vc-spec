@@ -18,7 +18,7 @@ This specification covers:
 
 - A two-party computation model
 - Value visibility at the input and output boundaries
-- Visibility propagation through instructions, linear memory, and globals
+- Taint propagation through instructions, linear memory, and globals
 - The embedding interface: how functions are invoked with visibility-tagged arguments, how memory is read and written, and how results are returned
 - The requirements for a conforming *guest* module
 
@@ -80,7 +80,7 @@ A *symbolic* value is a value that is not *concrete*. The VM operates on symboli
 
 **Store**
 
-The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a *visibility map*: a mapping from each value-carrying location to a visibility (*concrete* or *symbolic*). The locations subject to visibility tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. The visibility map is not observable by the guest.
+The verifiable compute *store* extends the WebAssembly [store](https://webassembly.github.io/spec/core/exec/runtime.html#store) with a mapping from each value-carrying location to a taint (*concrete* or *symbolic*). The locations subject to taint tracking are [linear memory](https://webassembly.github.io/spec/core/syntax/modules.html#memories) bytes and [global](https://webassembly.github.io/spec/core/syntax/modules.html#globals) values. This mapping is not observable by the guest.
 
 ## Two-Party Model
 
@@ -112,7 +112,7 @@ During execution, *public* values are *concrete* and *private* and *blind* value
 
 ## Instructions
 
-This section defines how visibility propagates through WebAssembly instructions during execution.
+This section defines how taint propagates through WebAssembly instructions during execution.
 
 ### Default Rule
 
@@ -130,7 +130,11 @@ A binary instruction produces a *concrete* result when a *concrete* operand comp
 
 > **Note**
 >
-> This table is exhaustive. No other WebAssembly instruction has a concrete operand that completely determines the result. Shifts and rotates do not qualify because the shift amount is taken modulo the bit width. Division does not qualify because the result depends on whether the divisor is zero. The [`select`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-select) instruction does not qualify because the result is the selected operand, whose visibility may be symbolic.
+> This table is exhaustive. No other WebAssembly instruction has a concrete operand that completely determines the result. Shifts and rotates do not qualify because the shift amount is taken modulo the bit width. Division does not qualify because the result depends on whether the divisor is zero. The [`select`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-select) instruction has its own rule (see [Select](#select)).
+
+### Select
+
+The [`select`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-select) instruction is an exception to the default rule. If the condition is *concrete*, the result has the taint of the selected operand — the unselected operand's taint is ignored. If the condition is *symbolic*, the result is *symbolic*.
 
 ### Constants
 
@@ -146,11 +150,11 @@ All bytes in linear memory are initially *concrete*, including bytes initialized
 
 ### Store Propagation
 
-When a value is stored to linear memory, the written bytes inherit the visibility of the stored value.
+When a value is stored to linear memory, the written bytes inherit the taint of the stored value.
 
 ### Load Inheritance
 
-When bytes are loaded from linear memory, the resulting value inherits the visibility of the bytes read. If any byte in the range is *symbolic*, the result is *symbolic*.
+When bytes are loaded from linear memory, the resulting value inherits the taint of the bytes read. If any byte in the range is *symbolic*, the result is *symbolic*.
 
 ### Memory Growth
 
@@ -158,7 +162,7 @@ When linear memory is grown via [`memory.grow`](https://webassembly.github.io/sp
 
 ## Globals
 
-Each [global variable](https://webassembly.github.io/spec/core/syntax/modules.html#globals) in the store has a visibility in the *visibility map*.
+Each [global variable](https://webassembly.github.io/spec/core/syntax/modules.html#globals) in the store has a taint (*concrete* or *symbolic*).
 
 ### Initial Value
 
@@ -166,15 +170,15 @@ All globals are initially *concrete*.
 
 ### Set Propagation
 
-When a value is written to a mutable global via [`global.set`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-set), the global's visibility is set to the visibility of the written value.
+When a value is written to a mutable global via [`global.set`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-set), the global's taint is set to the taint of the written value.
 
 ### Get Inheritance
 
-When a value is read from a global via [`global.get`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-get), the resulting value inherits the visibility of the global.
+When a value is read from a global via [`global.get`](https://webassembly.github.io/spec/core/exec/instructions.html#exec-global-get), the resulting value inherits the taint of the global.
 
 ## Tables
 
-[Table](https://webassembly.github.io/spec/core/syntax/modules.html#tables) elements are references ([`funcref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types), [`externref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types)). Table elements are not subject to visibility tracking.
+[Table](https://webassembly.github.io/spec/core/syntax/modules.html#tables) elements are references ([`funcref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types), [`externref`](https://webassembly.github.io/spec/core/syntax/types.html#reference-types)). Table elements are not subject to taint tracking.
 
 ## Invocation
 
@@ -234,7 +238,7 @@ Each tagged argument corresponds to a parameter in the function's WebAssembly [t
 
 ### Return Values
 
-The return values of a function are *concrete*. Both parties observe the same return values, regardless of the visibility those values had during execution.
+The return values of a function are *concrete*. The embedder implicitly reveals any *symbolic* return values at the invocation boundary. Both parties observe the same return values, regardless of the taint those values had during execution.
 
 ### Traps
 
@@ -267,7 +271,7 @@ Complex data structures MUST be passed via [linear memory](https://webassembly.g
 
 The guest module MAY [import](https://webassembly.github.io/spec/core/syntax/modules.html#imports) [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions). The set of host functions available to a module is **implementation-defined**.
 
-Embedders MAY provide additional host functions for accelerated operations (e.g., hash functions, signature verification).
+Each host function MUST define how taint propagates through its parameters and return values. Embedders MAY provide host functions for accelerated operations (e.g., hash functions, signature verification).
 
 ### Custom Sections
 
@@ -335,7 +339,7 @@ A *tagged argument* pairs a visibility with either a value or a type:
 
 1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
 2. If *i* is out of bounds, return *error*.
-3. Write *byte* at index *i*. Update the visibility map: *public* maps to *concrete*, *private* and *blind* map to *symbolic*.
+3. Write *byte* at index *i*. Update the store: *public* maps to *concrete*, *private* and *blind* map to *symbolic*.
 4. Return the updated store.
 
 #### `mem_read`(*store*, *memaddr*, *i*: u32) : (*byte* | *abort* | *error*)
@@ -350,7 +354,7 @@ A *tagged argument* pairs a visibility with either a value or a type:
 1. Pre-condition: the [memory address](https://webassembly.github.io/spec/core/exec/runtime.html#syntax-memaddr) *memaddr* is valid in *store*.
 2. Pre-condition: both parties agree to reveal the specified region.
 3. If *i* + *n* is out of bounds, return *error*.
-4. Set the visibility of bytes *i* through *i* + *n* − 1 to *concrete*.
+4. Set the taint of bytes *i* through *i* + *n* − 1 to *concrete*.
 5. Return the updated store.
 
 > **Note**
