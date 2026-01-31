@@ -184,9 +184,9 @@ Complex data structures MUST be passed via [linear memory](https://webassembly.g
 
 ### Imports
 
-The guest module MAY import host functions provided by the embedder. The set of available host functions is **implementation-defined**.
+The guest module MAY [import](https://webassembly.github.io/spec/core/syntax/modules.html#imports) [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions). The set of host functions available to a module is **implementation-defined**.
 
-Standard host function interfaces are defined separately in [VCI](vci.md). Implementations MAY provide additional host functions for accelerated operations (e.g., hash functions, signature verification).
+Standard host function interfaces are defined separately in [VCI](vci.md). Embedders MAY provide additional host functions for accelerated operations (e.g., hash functions, signature verification).
 
 ### Custom Sections
 
@@ -266,7 +266,7 @@ How protocol-level failures are reported. A protocol-level failure is distinct f
 
 ### Available Host Functions
 
-The set of host functions available for import by the guest module (see [Imports](#imports)). Standard host function interfaces are defined separately in [VCI](vci.md).
+The set of [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) available to the guest module (see [Imports](#imports)). Standard host function interfaces are defined separately in [VCI](vci.md).
 
 ### Resource Limits {#impl-resource-limits}
 

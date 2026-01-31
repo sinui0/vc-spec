@@ -8,12 +8,12 @@ slug: /vci
 
 VCI is an optional set of standard interfaces for the Verifiable Compute specification. It standardizes common patterns on both sides of the guest/*embedder* boundary:
 
-- **Host interfaces** — Standard functions provided by the *embedder* and imported by the guest module from the `vc` namespace.
+- **Host interfaces** — Standard [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) imported by the guest module from the `vc` namespace.
 - **Guest interfaces** — Standard functions exported by the guest module for applications and the embedder to invoke.
 
 ## Host Interfaces
 
-Host interfaces are standard functions provided by the *embedder* that guest modules may import from the `vc` namespace.
+Host interfaces are standard [host functions](https://webassembly.github.io/spec/core/exec/runtime.html#host-functions) that guest modules may import from the `vc` namespace.
 
 ### Reveal
 
