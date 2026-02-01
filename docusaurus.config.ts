@@ -8,7 +8,7 @@ const config: Config = {
   title: "Verifiable Compute",
   tagline:
     "A specification for two-party verifiable computation, layered on WebAssembly",
-  favicon: "img/favicon.ico",
+  favicon: "img/icon.svg",
 
   future: {
     v4: true,
@@ -73,6 +73,10 @@ const config: Config = {
     },
     navbar: {
       title: "Verifiable Compute",
+      logo: {
+        alt: "Verifiable Compute",
+        src: "img/icon.svg",
+      },
       items: [
         {
           type: "docSidebar",
