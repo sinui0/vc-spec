@@ -48,19 +48,34 @@ All reveal functions are imported from the `vc` namespace.
 
 **`reveal_<type>(value) -> handle`**
 
-Initiates a reveal of `value`. Returns a handle (`i32`) immediately. The input may be concrete or symbolic. If already concrete, the operation is a no-op but still returns a valid handle.
+Initiates a reveal of `value`. Returns a handle (`i32`) immediately. If the input is already *concrete*, the operation is a no-op but still returns a valid handle.
 
 **`reveal_<type>_wait(handle) -> value`**
 
-Blocks until the reveal associated with `handle` completes. Returns the concrete value.
+Blocks until the reveal associated with `handle` completes. Returns the revealed value.
+
+#### Taint
+
+**`reveal_<type>`**: The `value` parameter may be *concrete* or *symbolic*. The returned handle is always *concrete*.
+
+**`reveal_<type>_wait`**: The `handle` parameter MUST be *concrete*. The returned value is always *concrete*.
+
+#### Errors
+
+**`reveal_<type>_wait`**: Traps if `handle` is not valid and unconsumed (see [Handle Semantics](#handle-semantics)).
 
 #### Handle Semantics
 
-Handles are `i32` values, following the WebAssembly Component Model convention for resource handles.
+The embedder maintains a counter *N*, initially `0`, representing the number of handles allocated. Each call to `reveal_<type>` increments *N* by one and returns *N* as the handle. The value `0` is never a valid handle.
 
-- A handle is valid only for a single `_wait` call
-- Using an invalid handle (e.g., reusing a handle, using an uninitialized value) results in a trap
-- Handles are not required to be used in the order they were created
+A handle *h* is **valid and unconsumed** if all of the following hold:
+- *h* ≥ 1
+- *h* ≤ *N*
+- *h* has not been passed to a previous `_wait` call
+
+Passing a handle that is not valid and unconsumed to a `_wait` function traps. A successful `_wait` call consumes the handle.
+
+Handles are not required to be consumed in the order they were created.
 
 #### Asynchronous Model
 
@@ -111,3 +126,7 @@ The four operations are distinguished by argument values:
 - **No-op** — `original_ptr = 0`, `original_size = 0`, `new_size = 0`. Returns an unspecified value.
 
 If the guest cannot satisfy the allocation, it must *trap*. `realloc` never returns a failure code — the caller can assume that a non-trapping return always provides a valid pointer (when `new_size > 0`).
+
+#### Taint
+
+All parameters to `realloc` MUST be *concrete*. The returned pointer is *concrete*.
