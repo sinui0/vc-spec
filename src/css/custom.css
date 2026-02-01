@@ -1,30 +1,96 @@
-/**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+/*
+ * Global styles for the Verifiable Compute specification site.
+ * Overrides the default Infima variables with a professional,
+ * specification-grade palette.
  */
 
-/* You can override the default Infima variables here. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  /* Primary: a muted indigo-blue, suitable for technical docs */
+  --ifm-color-primary: #6366f1;
+  --ifm-color-primary-dark: #4f46e5;
+  --ifm-color-primary-darker: #4338ca;
+  --ifm-color-primary-darkest: #3730a3;
+  --ifm-color-primary-light: #818cf8;
+  --ifm-color-primary-lighter: #a5b4fc;
+  --ifm-color-primary-lightest: #c7d2fe;
+
+  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Oxygen, Ubuntu, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', monospace;
+  --ifm-code-font-size: 90%;
+  --ifm-heading-font-weight: 700;
+
+  --ifm-navbar-background-color: #ffffff;
+  --ifm-navbar-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --ifm-footer-background-color: #0f172a;
+  --ifm-footer-color: #cbd5e1;
+
+  --docusaurus-highlighted-code-line-bg: rgba(99, 102, 241, 0.1);
+
+  /* Landing page tokens */
+  --vc-hero-bg: #0f172a;
+  --vc-hero-text: #f8fafc;
+  --vc-hero-muted: #94a3b8;
+  --vc-section-bg: #ffffff;
+  --vc-section-alt-bg: #f8fafc;
+  --vc-card-bg: #ffffff;
+  --vc-card-border: #e2e8f0;
+  --vc-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --vc-accent: #6366f1;
+  --vc-accent-subtle: rgba(99, 102, 241, 0.08);
+  --vc-text-primary: #0f172a;
+  --vc-text-secondary: #475569;
+  --vc-text-tertiary: #94a3b8;
+  --vc-border: #e2e8f0;
+  --vc-code-bg: #f1f5f9;
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #818cf8;
+  --ifm-color-primary-dark: #6366f1;
+  --ifm-color-primary-darker: #4f46e5;
+  --ifm-color-primary-darkest: #4338ca;
+  --ifm-color-primary-light: #a5b4fc;
+  --ifm-color-primary-lighter: #c7d2fe;
+  --ifm-color-primary-lightest: #e0e7ff;
+
+  --ifm-navbar-background-color: #0f172a;
+  --ifm-navbar-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ifm-footer-background-color: #020617;
+
+  --docusaurus-highlighted-code-line-bg: rgba(129, 140, 248, 0.15);
+
+  --vc-hero-bg: #020617;
+  --vc-hero-text: #f8fafc;
+  --vc-hero-muted: #94a3b8;
+  --vc-section-bg: #0f172a;
+  --vc-section-alt-bg: #1e293b;
+  --vc-card-bg: #1e293b;
+  --vc-card-border: #334155;
+  --vc-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
+  --vc-accent: #818cf8;
+  --vc-accent-subtle: rgba(129, 140, 248, 0.1);
+  --vc-text-primary: #f8fafc;
+  --vc-text-secondary: #cbd5e1;
+  --vc-text-tertiary: #64748b;
+  --vc-border: #334155;
+  --vc-code-bg: #1e293b;
+}
+
+/* ── Navbar tweaks ────────────────────────────────────────────── */
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ── Footer tweaks ────────────────────────────────────────────── */
+.footer--dark {
+  background-color: var(--ifm-footer-background-color);
+}
+.footer__copyright {
+  opacity: 0.6;
+  font-size: 0.85rem;
 }

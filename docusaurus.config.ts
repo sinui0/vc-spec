@@ -7,7 +7,7 @@ import rehypeKatex from "rehype-katex";
 const config: Config = {
   title: "Verifiable Compute",
   tagline:
-    "A specification for verifiable computation with input privacy, layered on WebAssembly",
+    "A specification for two-party verifiable computation, layered on WebAssembly",
   favicon: "img/favicon.ico",
 
   future: {
