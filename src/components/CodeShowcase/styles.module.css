@@ -1,0 +1,37 @@
+.container {
+  margin: 2rem 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--ifm-color-primary-dark), var(--ifm-color-primary-lightest));
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pane {
+  background: var(--ifm-background-color);
+  padding: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.pane:first-child {
+  border-radius: 10px 10px 0 0;
+}
+
+.pane:last-child {
+  border-radius: 0 0 10px 10px;
+}
+
+.label {
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.5rem;
+}
+
+.codeWrapper pre {
+  margin: 0;
+  border-radius: 6px;
+}

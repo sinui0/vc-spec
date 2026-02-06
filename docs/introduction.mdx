@@ -7,6 +7,7 @@ slug: /introduction
 
 import Figure from '@site/src/components/Figure';
 import IdealVm from '@site/static/img/diagrams/ideal-vm.svg';
+import CodeShowcase from '@site/src/components/CodeShowcase';
 
 # Introduction
 
@@ -17,6 +18,10 @@ A useful way to think about verifiable computation is to imagine a trusted third
 <Figure src={IdealVm} caption="Idealized VM" />
 
 Of course, in practice we do not want to rely on a trusted third party. Instead, cryptographic protocols can be applied which allow the two parties to **simulate** such a system while providing very strong assurances that neither party can act dishonestly or cheat. This abstraction separates **what** the computation does from **how** it is securely implemented.
+
+Here's what this could look like — an anonymous credential proof where a holder proves they meet an age requirement without revealing their birthdate:
+
+<CodeShowcase />
 
 Different settings, such as zero-knowledge proofs or multi-party computation, utilize different cryptographic protocols and have varying capabilities and performance characteristics. This project aims to provide a unified abstraction which provides a number of benefits:
 
