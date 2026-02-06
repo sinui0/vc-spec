@@ -6,17 +6,18 @@ const guestCode = `#[vc::export]
 fn assert_age(credential: &[u8], issuer_key: &[u8], min_age: u32, country: &[u8]) {
     let id: Identity = parse_json(credential);
 
-    // Only success or failure is revealed
-    // Birthdate and address stay private
-    assert!(id.verify_signature(issuer_key));
-    assert!(id.age() >= min_age && id.country() == country);
+    let is_valid_credential = id.verify_signature(issuer_key);
+    let is_min_age = id.age() >= min_age;
+    let is_in_country = id.country() == country;
+
+    assert!(is_valid_credential && is_min_age && is_in_country);
 }`;
 
 const proverCode = `let instance = Instance::new(&module);
 
 let result = instance.assert_age()
-    .credential(Private(my_credential))
-    .issuer_key(Public(ISSUER_KEY))
+    .credential(Private(my_credential))  // Credential is hidden.
+    .issuer_key(Public(ISSUER_KEY))      // Both parties agree on public inputs.
     .min_age(Public(18))
     .country(Public(b"US"))
     .invoke()?;
@@ -27,7 +28,7 @@ const verifierCode = `let instance = Instance::new(&module);
 
 let result = instance.assert_age()
     .credential(Blind)
-    .issuer_key(Public(ISSUER_KEY))
+    .issuer_key(Public(ISSUER_KEY))      // Both parties agree on public inputs.
     .min_age(Public(18))
     .country(Public(b"US"))
     .invoke()?;
